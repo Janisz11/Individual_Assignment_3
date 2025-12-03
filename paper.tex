@@ -1,0 +1,269 @@
+\documentclass[12pt]{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+% Look for images in the plots/ subdirectory
+\graphicspath{{plots/}}
+
+\title{Parallel and Vectorized Matrix Multiplication \\ 
+\large Individual Assignment 3}
+\author{Kamil Janiszewski}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+The goal of this assignment is to investigate performance improvements in 
+matrix multiplication using two independent strategies:
+
+\begin{itemize}
+    \item \textbf{Parallelisation} using OpenMP multi-threading,
+    \item \textbf{Vectorisation (SIMD)} achieved implicitly through data layout optimisation and 
+          compiler auto-vectorisation.
+\end{itemize}
+
+All implementations, experiments, and scripts are available in the public repository:  
+\textbf{\url{https://github.com/Janisz11/Individual_Assignment_3}}
+
+We compare the following approaches:
+
+\begin{enumerate}
+    \item Basic sequential algorithm (\(O(n^3)\)),
+    \item Vectorised algorithm (transposed layout of matrix \(B\)),
+    \item Parallel algorithm using OpenMP with 1--8 threads.
+\end{enumerate}
+
+\section{Algorithms}
+
+\subsection{Basic Algorithm}
+
+The classical triple-nested loop version was implemented as a baseline:
+
+\[
+C(i,j) = \sum_{k=0}^{n-1} A(i,k) \cdot B(k,j)
+\]
+
+This implementation has no optimisations and processes elements in row-major order.
+
+\subsection{Vectorised Algorithm (Optional Part)}
+
+Vectorisation was achieved by:
+
+\begin{itemize}
+    \item transposing matrix \(B\) into \(B^T\),
+    \item ensuring that both input vectors used in the innermost loop are read 
+          linearly from memory,
+    \item enabling compiler SIMD through \texttt{-O3 -march=native}.
+\end{itemize}
+
+After transposition, the multiplication becomes:
+
+\[
+C(i,j) = \sum_{k=0}^{n-1} A(i,k) \cdot B^T(j,k)
+\]
+
+This improves cache locality and allows the compiler to produce AVX/AVX2 instructions.
+
+\subsection{Parallel Algorithm (OpenMP)}
+
+Parallelisation was implemented with a static scheduling policy over the outer loop:
+
+\begin{verbatim}
+#pragma omp parallel for schedule(static) num_threads(t)
+for (i = 0; i < n; i++)
+    for (j = 0; j < n; j++)
+        for (k = 0; k < n; k++)
+            C(i,j) += A(i,k) * B(k,j);
+\end{verbatim}
+
+Speedup and efficiency were calculated as:
+
+\[
+S = \frac{T_{\text{basic}}}{T_{\text{parallel}}}, \qquad
+E = \frac{S}{p}
+\]
+
+where \(p\) is the number of threads.
+
+\section{Experimental Setup}
+
+\begin{itemize}
+    \item CPU: multi-core x86\_64 (8 logical cores),
+    \item Compiler: g++ with flags \texttt{-O3 -march=native -fopenmp},
+    \item Matrix sizes: \(256, 512, 1024\),
+    \item Measurements repeated 3 times, best result used.
+\end{itemize}
+
+The full benchmarking implementation is provided in the file \texttt{main.cpp}
+inside the GitHub repository.
+
+\section{Results}
+
+\subsection{Execution Times and Speedup}
+
+Tables \ref{tab256}, \ref{tab512}, and \ref{tab1024} summarise measured times.
+
+\begin{table}[h]
+\centering
+\caption{Results for size \(256\times256\)}
+\label{tab256}
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & Threads & Time [ms] & Speedup & Efficiency \\
+\midrule
+Basic & 1 & 22.009 & 1.000 & 1.000 \\
+Vectorised & 1 & 6.429 & 3.423 & 3.423 \\
+Parallel & 1 & 19.395 & 1.135 & 1.135 \\
+Parallel & 2 & 12.596 & 1.747 & 0.874 \\
+Parallel & 4 & 8.842 & 2.489 & 0.622 \\
+Parallel & 8 & 6.625 & 3.322 & 0.415 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Results for size \(512\times512\)}
+\label{tab512}
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & Threads & Time [ms] & Speedup & Efficiency \\
+\midrule
+Basic & 1 & 344.962 & 1.000 & 1.000 \\
+Vectorised & 1 & 68.652 & 5.025 & 5.025 \\
+Parallel & 1 & 338.345 & 1.020 & 1.020 \\
+Parallel & 2 & 176.076 & 1.959 & 0.980 \\
+Parallel & 4 & 110.931 & 3.110 & 0.777 \\
+Parallel & 8 & 70.890 & 4.866 & 0.608 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Results for size \(1024\times1024\)}
+\label{tab1024}
+\begin{tabular}{lrrrrr}
+\toprule
+Variant & Threads & Time [ms] & Speedup & Efficiency \\
+\midrule
+Basic & 1 & 4043.199 & 1.000 & 1.000 \\
+Vectorised & 1 & 640.520 & 6.312 & 6.312 \\
+Parallel & 1 & 4017.032 & 1.007 & 1.007 \\
+Parallel & 2 & 1867.710 & 2.165 & 1.082 \\
+Parallel & 4 & 1086.915 & 3.720 & 0.930 \\
+Parallel & 8 & 824.128 & 4.906 & 0.613 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+\section{Plots}
+
+To better illustrate the behaviour of the algorithms, the following figures
+show the speedup of the parallel implementation and the time comparison
+between the basic, vectorised, and parallel versions.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{speedup_vs_threads.png}
+    \caption{Speedup of the parallel implementation relative to the basic version
+             as a function of the number of threads, for different matrix sizes.}
+    \label{fig:speedup_threads}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{times_n256.png}
+    \caption{Execution time comparison for matrix size $256 \times 256$:
+             basic, vectorised, and parallel (maximum thread count).}
+    \label{fig:times256}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{times_n512.png}
+    \caption{Execution time comparison for matrix size $512 \times 512$:
+             basic, vectorised, and parallel (maximum thread count).}
+    \label{fig:times512}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{times_n1024.png}
+    \caption{Execution time comparison for matrix size $1024 \times 1024$:
+             basic, vectorised, and parallel (maximum thread count).}
+    \label{fig:times1024}
+\end{figure}
+
+\clearpage
+
+\section{Analysis}
+
+\subsection{Vectorisation Benefits}
+
+The vectorised version significantly outperformed the basic algorithm:
+
+\begin{itemize}
+    \item \(3.4\times\) faster for size 256,
+    \item \(5.0\times\) faster for size 512,
+    \item \(6.3\times\) faster for size 1024.
+\end{itemize}
+
+Performance improves with matrix size due to better amortisation of memory 
+access patterns and compiler SIMD utilisation.
+
+\subsection{Parallelisation Analysis}
+
+Parallel speedup scales well:
+
+\begin{itemize}
+    \item up to \(4.9\times\) faster with 8 threads for size 1024,
+    \item efficiency close to 1.0 for 2--4 threads,
+    \item expected drop in efficiency for 8 threads (\(\approx 0.61\)), 
+          caused by memory bandwidth limits.
+\end{itemize}
+
+A mild \textbf{superlinear speedup} (efficiency \(>1\)) appears for 2 threads at size 1024,
+likely due to improved cache utilisation.
+
+\subsection{Vectorised vs Parallel}
+
+For the largest matrix (1024):
+
+\begin{itemize}
+    \item Vectorised: 640 ms,
+    \item Parallel (8 threads): 824 ms.
+\end{itemize}
+
+Thus the vectorised version is \(\approx 1.28\times\) faster than 
+parallel OpenMP with 8 threads. This confirms that data layout and SIMD
+optimisations can match or exceed multi-threading when memory bandwidth 
+becomes a bottleneck.
+
+\section{Conclusion}
+
+Both optimisation strategies improved performance significantly:
+
+\begin{itemize}
+    \item Vectorisation offered the largest single-thread speedups,
+    \item Parallelisation scaled well up to available CPU cores,
+    \item For large matrices, vectorisation outperformed 8-thread OpenMP,
+    \item Combining both techniques would likely yield the best performance.
+\end{itemize}
+
+The full implementation, datasets, and benchmarking scripts are 
+available at:  
+\textbf{\url{https://github.com/Janisz11/Individual_Assignment_3}}
+
+\end{document}
